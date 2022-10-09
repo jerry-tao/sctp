@@ -392,3 +392,9 @@ func (s *Stream) onInboundStreamReset() {
 		s.state = StreamStateClosed
 	}
 }
+
+func (s *Stream) State() StreamState {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	return s.state
+}

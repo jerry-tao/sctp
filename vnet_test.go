@@ -440,13 +440,20 @@ func TestStreamClose(t *testing.T) {
 		if !assert.NoError(t, err, "should succeed") {
 			return
 		}
-		defer stream.Close() // nolint:errcheck
+		assert.Equal(t, StreamStateOpen, stream.State())
 
 		buf := make([]byte, 1500)
 		for {
 			n, err := stream.Read(buf)
 			if err != nil {
-				t.Logf("server: Read returned %v", err)
+				log.Infof("server: Read returned %v", err)
+				stream.Close() // nolint:errcheck
+
+				assert.Equal(t, StreamStateClosed, stream.State())
+
+				// give a bit of time for the OutgoingResetRequest so that
+				// the client side stream.Read() will return with EOF.
+				time.Sleep(100 * time.Millisecond)
 				break
 			}
 
@@ -481,7 +488,11 @@ func TestStreamClose(t *testing.T) {
 		if !assert.NoError(t, err, "should succeed") {
 			return
 		}
-		defer assoc.Close() // nolint:errcheck
+		defer func() {
+			log.Info("closing client side association")
+			assoc.Close() // nolint:errcheck
+			log.Info("closed client side association")
+		}()
 
 		log.Info("client handshake complete")
 
@@ -489,6 +500,7 @@ func TestStreamClose(t *testing.T) {
 		if !assert.NoError(t, err, "should succeed") {
 			return
 		}
+		assert.Equal(t, StreamStateOpen, stream.State())
 
 		stream.SetReliabilityParams(false, ReliabilityTypeReliable, 0)
 
@@ -505,7 +517,8 @@ func TestStreamClose(t *testing.T) {
 				log.Info("client read")
 				_, err2 := stream.Read(buf)
 				if err2 != nil {
-					t.Logf("client: Read returned %v", err2)
+					log.Infof("client: Read returned %v", err2)
+					assert.Equal(t, StreamStateClosed, stream.State())
 					break
 				}
 			}
@@ -522,6 +535,7 @@ func TestStreamClose(t *testing.T) {
 
 		err = stream.Close()
 		assert.NoError(t, err, "should succeed")
+		assert.Equal(t, StreamStateClosing, stream.State())
 
 		log.Info("client wait for exit reading..")
 		<-done
