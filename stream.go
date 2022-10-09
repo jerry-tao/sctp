@@ -279,7 +279,12 @@ func (s *Stream) Close() error {
 		s.log.Debugf("[%s] Close: state=%s", s.name, s.state.String())
 
 		if s.state == StreamStateOpen {
-			s.state = StreamStateClosing
+			if s.readErr == nil {
+				s.state = StreamStateClosing
+			} else {
+				s.state = StreamStateClosed
+			}
+			s.log.Debugf("[%s] state change: open => %s", s.name, s.state.String())
 			return s.streamIdentifier, true
 		}
 		return s.streamIdentifier, false
@@ -364,23 +369,26 @@ func (s *Stream) getNumBytesInReassemblyQueue() int {
 }
 
 func (s *Stream) onInboundStreamReset() {
-	var sid uint16
-	var resetOutbound bool
 	s.lock.Lock()
-	s.log.Debugf("[%s] onInboundStreamReset: state=%s", s.name, s.state.String())
-	if s.state == StreamStateOpen {
-		s.state = StreamStateClosing
-		sid = s.streamIdentifier
-		resetOutbound = true
-	}
-	s.lock.Unlock()
+	defer s.lock.Unlock()
 
-	// From draft-ietf-rtcweb-data-channel-13 section-6.7:
+	s.log.Debugf("[%s] onInboundStreamReset: state=%s", s.name, s.state.String())
+
+	// No more inbound data to read. Unblock the read with io.EOF.
+	// This should cause DCEP layer (datachannel package) to call Close() which
+	// will reset outgoing stream also.
+
+	// See RFC 8831 section 6.7:
 	//	if one side decides to close the data channel, it resets the corresponding
 	//	outgoing stream.  When the peer sees that an incoming stream was
 	//	reset, it also resets its corresponding outgoing stream.  Once this
 	//	is completed, the data channel is closed.
-	if resetOutbound {
-		s.association.sendResetRequest(sid)
+
+	s.readErr = io.EOF
+	s.readNotifier.Broadcast()
+
+	if s.state == StreamStateClosing {
+		s.log.Debugf("[%s] state change: closing => closed", s.name)
+		s.state = StreamStateClosed
 	}
 }
