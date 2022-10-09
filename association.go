@@ -2017,7 +2017,8 @@ func (a *Association) resetStreamsIfAny(p *paramOutgoingResetRequest) *packet {
 			a.lock.Unlock()
 			s.onInboundStreamReset()
 			a.lock.Lock()
-			a.unregisterStream(s, io.EOF)
+			a.log.Debugf("[%s] deleting stream %d", a.name, id)
+			delete(a.streams, s.streamIdentifier)
 		}
 		delete(a.reconfigRequests, p.reconfigRequestSequenceNumber)
 	} else {
