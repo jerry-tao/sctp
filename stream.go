@@ -62,6 +62,7 @@ type Stream struct {
 	state               StreamState
 	log                 logging.LeveledLogger
 	name                string
+	streamVersion       uint32
 }
 
 // StreamIdentifier returns the Stream identifier associated to the stream.
@@ -243,6 +244,7 @@ func (s *Stream) packetize(raw []byte, ppi PayloadProtocolIdentifier) []*chunkPa
 			payloadType:          ppi,
 			streamSequenceNumber: s.sequenceNumber,
 			head:                 head,
+			streamVersion:        s.streamVersion,
 		}
 
 		if head == nil {

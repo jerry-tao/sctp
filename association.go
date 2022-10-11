@@ -221,8 +221,9 @@ type Association struct {
 	delayedAckTriggered   bool
 	immediateAckTriggered bool
 
-	name string
-	log  logging.LeveledLogger
+	name          string
+	log           logging.LeveledLogger
+	streamVersion uint32
 }
 
 // Config collects the arguments to createAssociation construction into
@@ -1363,12 +1364,14 @@ func (a *Association) AcceptStream() (*Stream, error) {
 
 // createStream creates a stream. The caller should hold the lock and check no stream exists for this id.
 func (a *Association) createStream(streamIdentifier uint16, accept bool) *Stream {
+
 	s := &Stream{
 		association:      a,
 		streamIdentifier: streamIdentifier,
 		reassemblyQueue:  newReassemblyQueue(streamIdentifier),
 		log:              a.log,
 		name:             fmt.Sprintf("%d:%s", streamIdentifier, a.name),
+		streamVersion:    atomic.AddUint32(&a.streamVersion, 1),
 	}
 
 	s.readNotifier = sync.NewCond(&s.lock)
@@ -2089,6 +2092,12 @@ func (a *Association) popPendingDataChunksToSend() ([]*chunkPayloadData, []uint1
 				if err != nil {
 					a.log.Errorf("failed to pop from pending queue: %s", err.Error())
 				}
+				continue
+			}
+			s, ok := a.streams[c.streamIdentifier]
+
+			if !ok || c.streamVersion != s.streamVersion {
+				a.pendingQueue.pop(c)
 				continue
 			}
 
