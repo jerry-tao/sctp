@@ -28,9 +28,10 @@ type StreamState int
 
 // StreamState enums
 const (
-	StreamStateOpen    StreamState = iota // Stream object starts with StreamStateOpen
-	StreamStateClosing                    // Outgoing stream is being reset
-	StreamStateClosed                     // Stream has been closed
+	StreamStateOpen          StreamState = iota // Stream object starts with StreamStateOpen
+	StreamStateClosing                          // Outgoing stream is being reset
+	StreamStateRemoteClosing                    // Close called by remote
+	StreamStateClosed                           // Stream has been closed
 )
 
 func (ss StreamState) String() string {
@@ -71,6 +72,7 @@ type Stream struct {
 	state               StreamState
 	log                 logging.LeveledLogger
 	name                string
+	version             uint32
 }
 
 // StreamIdentifier returns the Stream identifier associated to the stream.
@@ -296,6 +298,7 @@ func (s *Stream) packetize(raw []byte, ppi PayloadProtocolIdentifier) []*chunkPa
 		copy(userData, raw[i:i+fragmentSize])
 
 		chunk := &chunkPayloadData{
+			streamVersion:        s.version,
 			streamIdentifier:     s.streamIdentifier,
 			userData:             userData,
 			unordered:            unordered,
