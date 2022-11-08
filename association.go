@@ -2099,7 +2099,7 @@ func (a *Association) popPendingDataChunksToSend() ([]*chunkPayloadData, []uint1
 
 			s, ok := a.streams[c.streamIdentifier]
 
-			if !ok || s.state > StreamStateClosing || s.version != c.streamVersion {
+			if !ok || s.state > StreamStateOpen || s.version != c.streamVersion {
 				err := a.pendingQueue.pop(c)
 				if err != nil {
 					a.log.Errorf("failed to pop from pending queue: %s", err.Error())

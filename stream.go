@@ -28,10 +28,9 @@ type StreamState int
 
 // StreamState enums
 const (
-	StreamStateOpen          StreamState = iota // Stream object starts with StreamStateOpen
-	StreamStateClosing                          // Outgoing stream is being reset
-	StreamStateRemoteClosing                    // Close called by remote
-	StreamStateClosed                           // Stream has been closed
+	StreamStateOpen    StreamState = iota // Stream object starts with StreamStateOpen
+	StreamStateClosing                    // Stream is closed by remote
+	StreamStateClosed                     // Stream has been closed
 )
 
 func (ss StreamState) String() string {
@@ -343,14 +342,19 @@ func (s *Stream) Close() error {
 
 		s.log.Debugf("[%s] Close: state=%s", s.name, s.state.String())
 
-		if s.state == StreamStateOpen {
-			if s.readErr == nil {
-				s.state = StreamStateClosing
-			} else {
-				s.state = StreamStateClosed
-			}
-			s.log.Debugf("[%s] state change: open => %s", s.name, s.state.String())
+		switch s.state {
+		case StreamStateOpen:
+			s.state = StreamStateClosed
+			s.log.Debugf("[%s] state change: open => closed", s.name)
+			s.readErr = io.EOF
+			s.readNotifier.Broadcast()
 			return s.streamIdentifier, true
+		case StreamStateClosing:
+			s.state = StreamStateClosed
+			s.log.Debugf("[%s] state change: closing => closed", s.name)
+			return s.streamIdentifier, true
+		case StreamStateClosed:
+			return s.streamIdentifier, false
 		}
 		return s.streamIdentifier, false
 	}(); resetOutbound {
@@ -448,14 +452,14 @@ func (s *Stream) onInboundStreamReset() {
 	//	outgoing stream.  When the peer sees that an incoming stream was
 	//	reset, it also resets its corresponding outgoing stream.  Once this
 	//	is completed, the data channel is closed.
+	if s.state == StreamStateOpen {
+		s.log.Debugf("[%s] state change: open => closing", s.name)
+		s.state = StreamStateClosing
+	}
 
 	s.readErr = io.EOF
 	s.readNotifier.Broadcast()
 
-	if s.state == StreamStateClosing {
-		s.log.Debugf("[%s] state change: closing => closed", s.name)
-		s.state = StreamStateClosed
-	}
 }
 
 // State return the stream state.
