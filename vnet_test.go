@@ -448,6 +448,7 @@ func TestStreamClose(t *testing.T) {
 			if !assert.NoError(t, innerErr, "should succeed") {
 				return
 			}
+			log.Info("stream accepted")
 			assert.Equal(t, StreamStateOpen, stream.State())
 
 			buf := make([]byte, 1500)
@@ -455,6 +456,7 @@ func TestStreamClose(t *testing.T) {
 				n, errRead := stream.Read(buf)
 				if errRead != nil {
 					log.Infof("server: Read returned %v", errRead)
+					assert.Equal(t, StreamStateClosing, stream.State(), "should be closing")
 					_ = stream.Close() // nolint:errcheck
 					assert.Equal(t, StreamStateClosed, stream.State())
 					break
@@ -464,12 +466,16 @@ func TestStreamClose(t *testing.T) {
 				assert.Equal(t, 0, bytes.Compare(buf[:n], messages[numServerReceived]), "should receive HELLO")
 
 				_, err2 := stream.Write(buf[:n])
-				assert.NoError(t, err2, "should succeed")
-
+				if err2 != nil {
+					assert.Equal(t, StreamStateClosing, stream.State(), "should be closing")
+					assert.Equal(t, err2, errStreamClosed, "should stop writing when closing ")
+					assert.Equal(t, StreamStateClosed, stream.State())
+				}
 				numServerReceived++
 			}
 			// don't close association until the client's stream routine is complete
 			<-clientShutDown
+
 		}()
 
 		// connected UDP conn for client
@@ -529,16 +535,17 @@ func TestStreamClose(t *testing.T) {
 			venv.dropNextReconfigChunk(1)
 		}
 
-		// Immediately close the stream
+		// Wait server accept stream.
+		time.Sleep(time.Millisecond * 100)
+
 		err = stream.Close()
 		assert.NoError(t, err, "should succeed")
-		assert.Equal(t, StreamStateClosing, stream.State())
+		assert.Equal(t, StreamStateClosed, stream.State())
 
-		log.Info("client wait for exit reading..")
-		<-clientShutDown
-
-		assert.Equal(t, numMessages, numServerReceived, "all messages should be received")
-		assert.Equal(t, numMessages, numClientReceived, "all messages should be received")
+		log.Info("wait server closed..")
+		<-serverShutDown
+		assert.LessOrEqual(t, numServerReceived, numMessages, "messages could be lost")
+		assert.LessOrEqual(t, numClientReceived, numMessages, "messages could be lost")
 
 		_, err = stream.Write([]byte{1})
 
