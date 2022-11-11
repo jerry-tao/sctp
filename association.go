@@ -2090,20 +2090,14 @@ func (a *Association) popPendingDataChunksToSend() ([]*chunkPayloadData, []uint1
 			dataLen := uint32(len(c.userData))
 			if dataLen == 0 {
 				sisToReset = append(sisToReset, c.streamIdentifier)
-				err := a.pendingQueue.pop(c)
-				if err != nil {
-					a.log.Errorf("failed to pop from pending queue: %s", err.Error())
-				}
+				a.popPendingDataChunksToDrop(c)
 				continue
 			}
 
 			s, ok := a.streams[c.streamIdentifier]
 
-			if !ok || s.state > StreamStateOpen || s.version != c.streamVersion {
-				err := a.pendingQueue.pop(c)
-				if err != nil {
-					a.log.Errorf("failed to pop from pending queue: %s", err.Error())
-				}
+			if !ok || s.State() > StreamStateOpen || s.version != c.streamVersion {
+				a.popPendingDataChunksToDrop(c)
 				continue
 			}
 
@@ -2133,6 +2127,13 @@ func (a *Association) popPendingDataChunksToSend() ([]*chunkPayloadData, []uint1
 	}
 
 	return chunks, sisToReset
+}
+
+func (a *Association) popPendingDataChunksToDrop(c *chunkPayloadData) {
+	err := a.pendingQueue.pop(c)
+	if err != nil {
+		a.log.Errorf("failed to pop from pending queue: %s", err.Error())
+	}
 }
 
 // bundleDataChunksIntoPackets packs DATA chunks into packets. It tries to bundle
